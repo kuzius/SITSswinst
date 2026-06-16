@@ -34,8 +34,8 @@ $Packages = @(
     [pscustomobject]@{ Name = 'VLC media player';     Id = 'VideoLAN.VLC' }
     [pscustomobject]@{ Name = '7-Zip';                Id = '7zip.7zip' }
     [pscustomobject]@{ Name = 'Adobe Acrobat Reader'; Id = 'Adobe.Acrobat.Reader.64-bit' }
-    [pscustomobject]@{ Name = '.NET 8 Desktop Runtime (x64)'; Id = 'Microsoft.DotNet.DesktopRuntime.8.x64' }
-    [pscustomobject]@{ Name = 'Dell Command Update'; Id = 'Dell.CommandUpdate' }
+    [pscustomobject]@{ Name = '.NET 8 Desktop Runtime (x64)'; Id = 'Microsoft.DotNet.DesktopRuntime.8.x64'; DellOnly = $true }
+    [pscustomobject]@{ Name = 'Dell Command Update'; Id = 'Dell.CommandUpdate'; DellOnly = $true }
     # --- Add future software below, e.g.: ---
     # [pscustomobject]@{ Name = 'Google Chrome';      Id = 'Google.Chrome' }
     # [pscustomobject]@{ Name = 'Notepad++';          Id = 'Notepad++.Notepad++' }
@@ -45,6 +45,17 @@ function Write-Step  { param($m) Write-Host "[*] $m" -ForegroundColor Cyan }
 function Write-Ok    { param($m) Write-Host "[+] $m" -ForegroundColor Green }
 function Write-Warn2 { param($m) Write-Host "[!] $m" -ForegroundColor Yellow }
 function Write-Err   { param($m) Write-Host "[x] $m" -ForegroundColor Red }
+
+function Test-IsDell {
+    # True only on genuine Dell hardware (Manufacturer reports "Dell Inc.").
+    try {
+        $m = (Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).Manufacturer
+    }
+    catch {
+        $m = (Get-CimInstance -ClassName Win32_BIOS -ErrorAction SilentlyContinue).Manufacturer
+    }
+    return ($m -match 'Dell')
+}
 
 function Install-Bundle {
     param([object[]]$List)
@@ -102,9 +113,12 @@ function Install-Bundle {
 # ---------------------------------------------------------------------------
 Write-Step "SITSswinst quick installer"
 
-# Optional subset filter via $env:ONLY
+# Manufacturer check: Dell-only packages auto-install on Dell hardware only.
+$isDell = Test-IsDell
+
 $toInstall = $Packages
 if ($env:ONLY) {
+    # Explicit selection - honoured as-is (manufacturer gate not applied).
     $queries  = $env:ONLY -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
     $toInstall = $Packages | Where-Object {
         $p = $_
@@ -113,6 +127,14 @@ if ($env:ONLY) {
     if (-not $toInstall) {
         Write-Err "No packages matched ONLY='$($env:ONLY)'."
         return
+    }
+}
+elseif (-not $isDell) {
+    # Default bundle on non-Dell hardware: drop Dell-only packages.
+    $skipped   = $Packages | Where-Object { $_.DellOnly }
+    $toInstall = $Packages | Where-Object { -not $_.DellOnly }
+    if ($skipped) {
+        Write-Warn2 "Non-Dell hardware detected - skipping Dell-only package(s): $($skipped.Name -join ', ')"
     }
 }
 

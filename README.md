@@ -63,13 +63,21 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 ## Current bundle
 
-| App | winget Id |
-| --- | --- |
-| VLC media player | `VideoLAN.VLC` |
-| 7-Zip | `7zip.7zip` |
-| Adobe Acrobat Reader | `Adobe.Acrobat.Reader.64-bit` |
-| .NET 8 Desktop Runtime (x64) | `Microsoft.DotNet.DesktopRuntime.8.x64` |
-| Dell Command Update | `Dell.CommandUpdate` |
+| App | winget Id | Notes |
+| --- | --- | --- |
+| VLC media player | `VideoLAN.VLC` | |
+| 7-Zip | `7zip.7zip` | |
+| Adobe Acrobat Reader | `Adobe.Acrobat.Reader.64-bit` | |
+| .NET 8 Desktop Runtime (x64) | `Microsoft.DotNet.DesktopRuntime.8.x64` | Dell only |
+| Dell Command Update | `Dell.CommandUpdate` | Dell only |
+
+**Dell-only packages** (marked above) are automatically **skipped on non-Dell
+hardware**. The script checks `Win32_ComputerSystem.Manufacturer` at startup; if
+it isn't a Dell, those packages are dropped from the default bundle (with a
+notice). Explicitly requesting one via `$env:ONLY` overrides the check.
+
+> Note: winget always installs the **latest** version available — the bundle is
+> not version-pinned, so it never needs a version refresh.
 
 ## Adding more software
 
