@@ -68,6 +68,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 | VLC media player | `VideoLAN.VLC` |
 | 7-Zip | `7zip.7zip` |
 | Adobe Acrobat Reader | `Adobe.Acrobat.Reader.64-bit` |
+| .NET 8 Desktop Runtime (x64) | `Microsoft.DotNet.DesktopRuntime.8.x64` |
+| Dell Command Update | `Dell.CommandUpdate` |
 
 ## Adding more software
 

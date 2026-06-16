@@ -34,6 +34,8 @@ $Packages = @(
     [pscustomobject]@{ Name = 'VLC media player';     Id = 'VideoLAN.VLC' }
     [pscustomobject]@{ Name = '7-Zip';                Id = '7zip.7zip' }
     [pscustomobject]@{ Name = 'Adobe Acrobat Reader'; Id = 'Adobe.Acrobat.Reader.64-bit' }
+    [pscustomobject]@{ Name = '.NET 8 Desktop Runtime (x64)'; Id = 'Microsoft.DotNet.DesktopRuntime.8.x64' }
+    [pscustomobject]@{ Name = 'Dell Command Update'; Id = 'Dell.CommandUpdate' }
     # --- Add future software below, e.g.: ---
     # [pscustomobject]@{ Name = 'Google Chrome';      Id = 'Google.Chrome' }
     # [pscustomobject]@{ Name = 'Notepad++';          Id = 'Notepad++.Notepad++' }
