@@ -1,29 +1,58 @@
 # SITSswinst
 
-Quick software installer for Windows. Installs a curated set of applications
-(VLC, 7-Zip, Adobe Acrobat Reader, and more over time) in one shot using
+Quick software installer for Windows. One command installs a curated set of
+applications (VLC, 7-Zip, Adobe Acrobat Reader, and more over time) using
 [winget](https://learn.microsoft.com/windows/package-manager/winget/) — the
 Windows Package Manager built into Windows 10/11.
+
+## Quick start (remote one-liner)
+
+On any Windows 10/11 machine, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.ps1 | iex
+```
+
+With **no keys provided**, this installs the full software bundle.
+
+> Run PowerShell **as Administrator** for machine-wide installs.
 
 ## Requirements
 
 - Windows 10 (1809+) or Windows 11
-- `winget` / **App Installer** (preinstalled on current Windows; otherwise grab it
-  from the Microsoft Store)
+- `winget` / **App Installer** (preinstalled on current Windows; otherwise from
+  the Microsoft Store)
 - Internet connection
-- Run from an **elevated** PowerShell prompt for machine-wide installs
 
-## Usage
+## Options (environment variables)
+
+Because `irm | iex` can't take parameters, configuration is read from
+environment variables set *before* the call:
+
+| Variable | Effect |
+| --- | --- |
+| `$env:ONLY` | Comma-separated filter, e.g. `'VLC,7-Zip'` — install a subset only |
+| `$env:LIST` | Any value — print the bundle and exit without installing |
+| `$env:KEYS` | If set, takes the "keys provided" branch (reserved for future licensing/activation). If unset, the software bundle is installed. |
 
 ```powershell
-# Install everything in the list
-.\Install-Software.ps1
+# install only VLC
+$env:ONLY='VLC'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.ps1 | iex
 
-# See what would be installed, without installing
-.\Install-Software.ps1 -List
+# preview the bundle without installing
+$env:LIST='1'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.ps1 | iex
+```
 
-# Install only specific apps (matches Name or winget Id)
-.\Install-Software.ps1 -Only VLC,7-Zip
+To clear an option afterwards: `Remove-Item Env:\ONLY` (or open a new shell).
+
+## Run locally
+
+You can also clone and run it directly:
+
+```powershell
+git clone https://github.com/kuzius/SITSswinst.git
+cd SITSswinst
+.\get.ps1
 ```
 
 If PowerShell blocks the script, allow it for the current session:
@@ -32,7 +61,7 @@ If PowerShell blocks the script, allow it for the current session:
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 ```
 
-## Currently installed
+## Current bundle
 
 | App | winget Id |
 | --- | --- |
@@ -42,8 +71,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 ## Adding more software
 
-Edit the `$Packages` list near the top of
-[`Install-Software.ps1`](Install-Software.ps1) and add a line:
+Edit the `$Packages` list near the top of [`get.ps1`](get.ps1) and add a line:
 
 ```powershell
 [pscustomobject]@{ Name = 'Google Chrome'; Id = 'Google.Chrome' }
