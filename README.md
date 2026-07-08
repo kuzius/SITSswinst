@@ -34,6 +34,7 @@ environment variables set *before* the call:
 | `$env:ONLY` | Comma-separated filter, e.g. `'VLC,7-Zip'` — install a subset only |
 | `$env:LIST` | Any value — print the bundle and exit without installing |
 | `$env:DEBUG` | Any value — verbose output with native winget progress. Default is quiet: one status line per package (`Installing X ... installed`) plus the final summary table. |
+| `$env:ADOBE32` | Any value — install **32-bit** Adobe Acrobat Reader instead of the default 64-bit build. |
 | `$env:KEYS` | If set, takes the "keys provided" branch (reserved for future licensing/activation). If unset, the software bundle is installed. |
 
 ```powershell
@@ -71,7 +72,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 | --- | --- | --- |
 | VLC media player | `VideoLAN.VLC` | |
 | 7-Zip | `7zip.7zip` | |
-| Adobe Acrobat Reader | `Adobe.Acrobat.Reader.64-bit` | |
+| Adobe Acrobat Reader | `Adobe.Acrobat.Reader.64-bit` | 32-bit via `$env:ADOBE32` |
 | TeamViewer | `TeamViewer.TeamViewer` | |
 | .NET 8 Desktop Runtime (x64) | `Microsoft.DotNet.DesktopRuntime.8.x64` | Dell only |
 | Dell Command Update | `Dell.CommandUpdate` | Dell only |

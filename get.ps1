@@ -27,6 +27,8 @@
         $env:LIST  - any value -> just print the bundle and exit (no install).
         $env:DEBUG - any value -> verbose output (per-package progress and
                      native winget output) instead of summary-only.
+        $env:ADOBE32 - any value -> install 32-bit Adobe Acrobat Reader
+                     instead of the default 64-bit build.
 
     Examples:
         # install everything (quiet, summary at the end)
@@ -74,6 +76,14 @@
         # [pscustomobject]@{ Name = 'Google Chrome';               Id = 'Google.Chrome';                         Vendor = $null }
         # [pscustomobject]@{ Name = 'Notepad++';                   Id = 'Notepad++.Notepad++';                   Vendor = $null }
     )
+
+    # Some clients need the 32-bit Adobe Reader: $env:ADOBE32 swaps the package.
+    if ($env:ADOBE32) {
+        $Packages | Where-Object { $_.Id -eq 'Adobe.Acrobat.Reader.64-bit' } | ForEach-Object {
+            $_.Name = 'Adobe Acrobat Reader (32-bit)'
+            $_.Id   = 'Adobe.Acrobat.Reader.32-bit'
+        }
+    }
 
     function Write-Step  { param($m) if ($debugMode) { Write-Host "[*] $m" -ForegroundColor Cyan } }
     function Write-Ok    { param($m) if ($debugMode) { Write-Host "[+] $m" -ForegroundColor Green } }
@@ -124,8 +134,20 @@
         #   0           success
         #  -1978335189  UPDATE_NOT_APPLICABLE  - no newer version available
         #  -1978335135  PACKAGE_ALREADY_INSTALLED
+        # Known failure codes translated to a human explanation after the
+        # summary (most notably: the Windows Installer service being busy).
+        $ExitReasons = @{
+            -1978334974 = 'another installation is in progress (Windows Installer is busy, e.g. Windows Update or another setup running). Wait for it to finish, then re-run'
+            1618        = 'another installation is in progress (Windows Installer is busy, e.g. Windows Update or another setup running). Wait for it to finish, then re-run'
+            -1978334975 = 'the package is currently in use. Close the application, then re-run'
+            -1978334973 = 'needed files are in use by another process. Close open applications, then re-run'
+            -1978334967 = 'a reboot is required to finish a previous installation. Reboot, then re-run'
+            -1978334966 = 'the installation requires a reboot to complete'
+            -1978335226 = 'the package''s own installer failed to run. Try again from an elevated (Administrator) PowerShell'
+        }
         $results = @()
         foreach ($pkg in $List) {
+            $code = $null
             # Live status line so a long download never looks hung.
             if (-not $debugMode) {
                 Write-Host -NoNewline "[*] $($pkg.Name) ... " -ForegroundColor Cyan
@@ -185,6 +207,12 @@
                 Write-Step "$($pkg.Name) failed: $($_.Exception.Message)"
             }
 
+            # Translate known failure codes into a human explanation.
+            $reason = $null
+            if ($status -like 'Failed*' -and $null -ne $code -and $ExitReasons.ContainsKey([int]$code)) {
+                $reason = $ExitReasons[[int]$code]
+            }
+
             if (-not $debugMode) {
                 # Complete the live status line.
                 $color = if ($status -like 'Failed*') { 'Red' } else { 'Green' }
@@ -193,17 +221,21 @@
             else {
                 Write-Ok "$($pkg.Name): $status"
             }
-            $results += [pscustomobject]@{ Name = $pkg.Name; Status = $status }
+            $results += [pscustomobject]@{ Name = $pkg.Name; Status = $status; Reason = $reason }
         }
 
         foreach ($pkg in $Skipped) {
-            $results += [pscustomobject]@{ Name = $pkg.Name; Status = "Skipped ($($pkg.Vendor) hardware only)" }
+            $results += [pscustomobject]@{ Name = $pkg.Name; Status = "Skipped ($($pkg.Vendor) hardware only)"; Reason = $null }
         }
 
         Write-Host ""
         Write-Host "Summary:" -ForegroundColor Cyan
         $results | Format-Table Name, Status -AutoSize | Out-Host
-        if ($results | Where-Object { $_.Status -like 'Failed*' }) {
+        $failed = @($results | Where-Object { $_.Status -like 'Failed*' })
+        if ($failed) {
+            foreach ($f in ($failed | Where-Object { $_.Reason })) {
+                Write-Warn2 "$($f.Name): $($f.Reason)."
+            }
             Write-Warn2 "Some packages failed. Re-run with `$env:DEBUG='1' for full output."
         }
     }
