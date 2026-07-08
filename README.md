@@ -33,6 +33,7 @@ environment variables set *before* the call:
 | --- | --- |
 | `$env:ONLY` | Comma-separated filter, e.g. `'VLC,7-Zip'` — install a subset only |
 | `$env:LIST` | Any value — print the bundle and exit without installing |
+| `$env:DEBUG` | Any value — verbose output (per-package progress + native winget output). Default is quiet: only the final summary table is shown. |
 | `$env:KEYS` | If set, takes the "keys provided" branch (reserved for future licensing/activation). If unset, the software bundle is installed. |
 
 ```powershell
@@ -41,6 +42,9 @@ $env:ONLY='VLC'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/ge
 
 # preview the bundle without installing
 $env:LIST='1'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.ps1 | iex
+
+# verbose run (full winget output)
+$env:DEBUG='1'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.ps1 | iex
 ```
 
 To clear an option afterwards: `Remove-Item Env:\ONLY` (or open a new shell).
@@ -70,11 +74,13 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 | Adobe Acrobat Reader | `Adobe.Acrobat.Reader.64-bit` | |
 | .NET 8 Desktop Runtime (x64) | `Microsoft.DotNet.DesktopRuntime.8.x64` | Dell only |
 | Dell Command Update | `Dell.CommandUpdate` | Dell only |
+| Lenovo System Update | `Lenovo.SystemUpdate` | Lenovo only |
 
-**Dell-only packages** (marked above) are automatically **skipped on non-Dell
-hardware**. The script checks `Win32_ComputerSystem.Manufacturer` at startup; if
-it isn't a Dell, those packages are dropped from the default bundle (with a
-notice). Explicitly requesting one via `$env:ONLY` overrides the check.
+**Vendor-specific packages** (marked above) install only on **matching
+hardware**. The script checks `Win32_ComputerSystem.Manufacturer` at startup:
+Dell packages install on Dell machines, Lenovo packages on Lenovo machines, and
+everything else gets only the universal apps. Skipped packages are listed in the
+final summary. Explicitly requesting one via `$env:ONLY` overrides the check.
 
 > Note: winget always installs the **latest** version available — the bundle is
 > not version-pinned, so it never needs a version refresh.
