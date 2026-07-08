@@ -55,6 +55,7 @@
         [pscustomobject]@{ Name = 'VLC media player';              Id = 'VideoLAN.VLC';                          Vendor = $null }
         [pscustomobject]@{ Name = '7-Zip';                         Id = '7zip.7zip';                             Vendor = $null }
         [pscustomobject]@{ Name = 'Adobe Acrobat Reader';          Id = 'Adobe.Acrobat.Reader.64-bit';           Vendor = $null }
+        [pscustomobject]@{ Name = 'TeamViewer';                    Id = 'TeamViewer.TeamViewer';                 Vendor = $null }
         [pscustomobject]@{ Name = '.NET 8 Desktop Runtime (x64)';  Id = 'Microsoft.DotNet.DesktopRuntime.8.x64'; Vendor = 'Dell' }
         [pscustomobject]@{ Name = 'Dell Command Update';           Id = 'Dell.CommandUpdate';                    Vendor = 'Dell' }
         [pscustomobject]@{ Name = 'Lenovo System Update';          Id = 'Lenovo.SystemUpdate';                   Vendor = 'Lenovo' }
