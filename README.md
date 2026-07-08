@@ -33,7 +33,7 @@ environment variables set *before* the call:
 | --- | --- |
 | `$env:ONLY` | Comma-separated filter, e.g. `'VLC,7-Zip'` — install a subset only |
 | `$env:LIST` | Any value — print the bundle and exit without installing |
-| `$env:DEBUG` | Any value — verbose output (per-package progress + native winget output). Default is quiet: only the final summary table is shown. |
+| `$env:DEBUG` | Any value — verbose output with native winget progress. Default is quiet: one status line per package (`Installing X ... installed`) plus the final summary table. |
 | `$env:KEYS` | If set, takes the "keys provided" branch (reserved for future licensing/activation). If unset, the software bundle is installed. |
 
 ```powershell
@@ -84,7 +84,9 @@ everything else gets only the universal apps. Skipped packages are listed in the
 final summary. Explicitly requesting one via `$env:ONLY` overrides the check.
 
 > Note: winget always installs the **latest** version available — the bundle is
-> not version-pinned, so it never needs a version refresh.
+> not version-pinned, so it never needs a version refresh. Packages that are
+> already installed (even at an older version) are **upgraded in place** rather
+> than reinstalled; "already up to date" counts as success.
 
 ## Adding more software
 

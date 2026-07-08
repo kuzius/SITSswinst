@@ -10,8 +10,13 @@
     packages install only on matching hardware: Dell packages on Dell
     machines, Lenovo packages on Lenovo machines.
 
-    Output is quiet by default - only the final summary table (and any
-    fatal errors) is shown. Set $env:DEBUG for full verbose output.
+    Output is quiet by default - one live status line per package plus the
+    final summary table (and any fatal errors). Set $env:DEBUG for full
+    verbose output including native winget progress.
+
+    Packages already present are upgraded rather than reinstalled (winget
+    install errors on packages installed by a different technology, e.g.
+    an older Dell Command Update); "no newer version" counts as success.
 
     Because `irm | iex` cannot pass parameters, configuration is read from
     environment variables set before the call:
@@ -98,41 +103,81 @@
             Write-Warn2 "Not elevated - some apps may install per-user or fail. Run as Administrator for machine-wide installs."
         }
 
+        # winget exit codes we recognise:
+        #   0           success
+        #  -1978335189  UPDATE_NOT_APPLICABLE  - no newer version available
+        #  -1978335135  PACKAGE_ALREADY_INSTALLED
         $results = @()
         foreach ($pkg in $List) {
-            Write-Step "Installing $($pkg.Name) ($($pkg.Id)) ..."
+            # Live status line so a long download never looks hung.
+            if (-not $debugMode) {
+                Write-Host -NoNewline "[*] $($pkg.Name) ... " -ForegroundColor Cyan
+            }
             try {
-                if ($debugMode) {
-                    winget install --id $pkg.Id --exact `
-                        --accept-package-agreements `
-                        --accept-source-agreements `
-                        --silent
+                # Detect first: `winget install` errors on packages that are
+                # already present (e.g. installed by a different technology),
+                # so upgrade existing packages instead of reinstalling.
+                $null = winget list --id $pkg.Id --exact --accept-source-agreements 2>&1
+                $present = ($LASTEXITCODE -eq 0)
+
+                if ($present) {
+                    Write-Step "$($pkg.Name) ($($pkg.Id)) is present - checking for updates ..."
+                    if ($debugMode) {
+                        winget upgrade --id $pkg.Id --exact --include-unknown `
+                            --accept-package-agreements `
+                            --accept-source-agreements `
+                            --silent
+                    }
+                    else {
+                        $null = winget upgrade --id $pkg.Id --exact --include-unknown `
+                            --accept-package-agreements `
+                            --accept-source-agreements `
+                            --silent 2>&1
+                    }
+                    $code = $LASTEXITCODE
+                    switch ($code) {
+                        0            { $status = 'Updated' }
+                        -1978335189  { $status = 'Up to date' }
+                        -1978335135  { $status = 'Up to date' }
+                        default      { $status = "Failed (exit $code)" }
+                    }
                 }
                 else {
-                    # Quiet mode: swallow winget's progress/output entirely.
-                    $null = winget install --id $pkg.Id --exact `
-                        --accept-package-agreements `
-                        --accept-source-agreements `
-                        --silent 2>&1
-                }
-                $code = $LASTEXITCODE
-                if ($code -eq 0) {
-                    Write-Ok "$($pkg.Name) installed."
-                    $results += [pscustomobject]@{ Name = $pkg.Name; Status = 'Installed' }
-                }
-                elseif ($code -eq -1978335189) {
-                    Write-Ok "$($pkg.Name) already installed / up to date."
-                    $results += [pscustomobject]@{ Name = $pkg.Name; Status = 'Already present' }
-                }
-                else {
-                    Write-Step "$($pkg.Name) finished with exit code $code."
-                    $results += [pscustomobject]@{ Name = $pkg.Name; Status = "Failed (exit $code)" }
+                    Write-Step "Installing $($pkg.Name) ($($pkg.Id)) ..."
+                    if ($debugMode) {
+                        winget install --id $pkg.Id --exact `
+                            --accept-package-agreements `
+                            --accept-source-agreements `
+                            --silent
+                    }
+                    else {
+                        $null = winget install --id $pkg.Id --exact `
+                            --accept-package-agreements `
+                            --accept-source-agreements `
+                            --silent 2>&1
+                    }
+                    $code = $LASTEXITCODE
+                    switch ($code) {
+                        0            { $status = 'Installed' }
+                        -1978335135  { $status = 'Up to date' }
+                        default      { $status = "Failed (exit $code)" }
+                    }
                 }
             }
             catch {
+                $status = 'Failed'
                 Write-Step "$($pkg.Name) failed: $($_.Exception.Message)"
-                $results += [pscustomobject]@{ Name = $pkg.Name; Status = 'Failed' }
             }
+
+            if (-not $debugMode) {
+                # Complete the live status line.
+                $color = if ($status -like 'Failed*') { 'Red' } else { 'Green' }
+                Write-Host $status.ToLower() -ForegroundColor $color
+            }
+            else {
+                Write-Ok "$($pkg.Name): $status"
+            }
+            $results += [pscustomobject]@{ Name = $pkg.Name; Status = $status }
         }
 
         foreach ($pkg in $Skipped) {
