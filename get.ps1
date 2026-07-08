@@ -55,6 +55,11 @@
     # (find one with:  winget search <name>).
     # Vendor = $null installs everywhere; 'Dell' / 'Lenovo' only on matching
     # hardware (unless explicitly requested via $env:ONLY).
+    # AltIds: other winget ids the same product may be installed under
+    # (checked during detection so an existing copy is upgraded, not clobbered).
+    # ReinstallOnFailedUpgrade: if an in-place upgrade fails with an installer
+    # error, uninstall the old copy and install fresh (needed for Dell Command
+    # Update 4.x -> 5.x, whose installer refuses silent in-place upgrades).
     # -----------------------------------------------------------------------
     $Packages = @(
         [pscustomobject]@{ Name = 'VLC media player';              Id = 'VideoLAN.VLC';                          Vendor = $null }
@@ -62,7 +67,8 @@
         [pscustomobject]@{ Name = 'Adobe Acrobat Reader';          Id = 'Adobe.Acrobat.Reader.64-bit';           Vendor = $null }
         [pscustomobject]@{ Name = 'TeamViewer';                    Id = 'TeamViewer.TeamViewer';                 Vendor = $null }
         [pscustomobject]@{ Name = '.NET 8 Desktop Runtime (x64)';  Id = 'Microsoft.DotNet.DesktopRuntime.8.x64'; Vendor = 'Dell' }
-        [pscustomobject]@{ Name = 'Dell Command Update';           Id = 'Dell.CommandUpdate';                    Vendor = 'Dell' }
+        [pscustomobject]@{ Name = 'Dell Command Update';           Id = 'Dell.CommandUpdate';                    Vendor = 'Dell';
+                           AltIds = @('Dell.CommandUpdate.Universal'); ReinstallOnFailedUpgrade = $true }
         [pscustomobject]@{ Name = 'Lenovo System Update';          Id = 'Lenovo.SystemUpdate';                   Vendor = 'Lenovo' }
         # --- Add future software below, e.g.: ---
         # [pscustomobject]@{ Name = 'Google Chrome';               Id = 'Google.Chrome';                         Vendor = $null }
@@ -103,6 +109,17 @@
             Write-Warn2 "Not elevated - some apps may install per-user or fail. Run as Administrator for machine-wide installs."
         }
 
+        # Runs winget with the given arguments; shows native output only in
+        # debug mode. Returns the winget exit code. Output must go through
+        # Out-Host, never the success stream, or it would pollute the
+        # returned exit code.
+        function Invoke-Winget {
+            param([string[]]$Arguments)
+            if ($debugMode) { winget @Arguments | Out-Host }
+            else { $null = winget @Arguments 2>&1 }
+            return $LASTEXITCODE
+        }
+
         # winget exit codes we recognise:
         #   0           success
         #  -1978335189  UPDATE_NOT_APPLICABLE  - no newer version available
@@ -116,47 +133,46 @@
             try {
                 # Detect first: `winget install` errors on packages that are
                 # already present (e.g. installed by a different technology),
-                # so upgrade existing packages instead of reinstalling.
-                $null = winget list --id $pkg.Id --exact --accept-source-agreements 2>&1
-                $present = ($LASTEXITCODE -eq 0)
+                # so upgrade existing packages instead of reinstalling. The
+                # product may be installed under an alternate id (AltIds).
+                $foundId = $null
+                foreach ($id in (@($pkg.Id) + @($pkg.AltIds | Where-Object { $_ }))) {
+                    $null = winget list --id $id --exact --accept-source-agreements 2>&1
+                    if ($LASTEXITCODE -eq 0) { $foundId = $id; break }
+                }
 
-                if ($present) {
-                    Write-Step "$($pkg.Name) ($($pkg.Id)) is present - checking for updates ..."
-                    if ($debugMode) {
-                        winget upgrade --id $pkg.Id --exact --include-unknown `
-                            --accept-package-agreements `
-                            --accept-source-agreements `
-                            --silent
-                    }
-                    else {
-                        $null = winget upgrade --id $pkg.Id --exact --include-unknown `
-                            --accept-package-agreements `
-                            --accept-source-agreements `
-                            --silent 2>&1
-                    }
-                    $code = $LASTEXITCODE
+                if ($foundId) {
+                    Write-Step "$($pkg.Name) is present as $foundId - checking for updates ..."
+                    $code = Invoke-Winget @(
+                        'upgrade', '--id', $foundId, '--exact', '--include-unknown',
+                        '--accept-package-agreements', '--accept-source-agreements', '--silent')
                     switch ($code) {
                         0            { $status = 'Updated' }
                         -1978335189  { $status = 'Up to date' }
                         -1978335135  { $status = 'Up to date' }
-                        default      { $status = "Failed (exit $code)" }
+                        default      {
+                            if ($pkg.ReinstallOnFailedUpgrade) {
+                                # e.g. Dell Command Update 4.x -> 5.x: the new
+                                # installer refuses a silent in-place upgrade.
+                                Write-Step "In-place upgrade failed (exit $code) - uninstalling $foundId and reinstalling ..."
+                                $null = Invoke-Winget @(
+                                    'uninstall', '--id', $foundId, '--exact',
+                                    '--accept-source-agreements', '--silent')
+                                $code = Invoke-Winget @(
+                                    'install', '--id', $pkg.Id, '--exact',
+                                    '--accept-package-agreements', '--accept-source-agreements', '--silent')
+                                $status = if ($code -eq 0) { 'Reinstalled (was outdated)' }
+                                          else { "Failed (exit $code)" }
+                            }
+                            else { $status = "Failed (exit $code)" }
+                        }
                     }
                 }
                 else {
                     Write-Step "Installing $($pkg.Name) ($($pkg.Id)) ..."
-                    if ($debugMode) {
-                        winget install --id $pkg.Id --exact `
-                            --accept-package-agreements `
-                            --accept-source-agreements `
-                            --silent
-                    }
-                    else {
-                        $null = winget install --id $pkg.Id --exact `
-                            --accept-package-agreements `
-                            --accept-source-agreements `
-                            --silent 2>&1
-                    }
-                    $code = $LASTEXITCODE
+                    $code = Invoke-Winget @(
+                        'install', '--id', $pkg.Id, '--exact',
+                        '--accept-package-agreements', '--accept-source-agreements', '--silent')
                     switch ($code) {
                         0            { $status = 'Installed' }
                         -1978335135  { $status = 'Up to date' }
