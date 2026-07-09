@@ -35,6 +35,7 @@ environment variables set *before* the call:
 | `$env:LIST` | Any value — print the bundle and exit without installing |
 | `$env:DEBUG` | Any value — verbose output with native winget progress. Default is quiet: one status line per package (`Installing X ... installed`) plus the final summary table. |
 | `$env:ADOBE32` | Any value — install **32-bit** Adobe Acrobat Reader instead of the default 64-bit build. |
+| `$env:OFFICE` | Any value — also preinstall **Office 2024 Home & Business (64-bit)**. Several-GB download (10–30 min); installs **unlicensed** — sign in with the owning Microsoft account (or enter a product key) after handover. |
 | `$env:KEYS` | If set, takes the "keys provided" branch (reserved for future licensing/activation). If unset, the software bundle is installed. |
 
 ```powershell
@@ -46,6 +47,9 @@ $env:LIST='1'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.
 
 # verbose run (full winget output)
 $env:DEBUG='1'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.ps1 | iex
+
+# full bundle + Office 2024 Home & Business preinstall
+$env:OFFICE='1'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.ps1 | iex
 ```
 
 To clear an option afterwards: `Remove-Item Env:\ONLY` (or open a new shell).
@@ -88,6 +92,19 @@ final summary. Explicitly requesting one via `$env:ONLY` overrides the check.
 > not version-pinned, so it never needs a version refresh. Packages that are
 > already installed (even at an older version) are **upgraded in place** rather
 > than reinstalled; "already up to date" counts as success.
+
+## Office 2024 Home & Business (opt-in)
+
+Office 2024 H&B is a retail perpetual SKU that winget does not carry, so
+`$env:OFFICE='1'` installs it via the **Office Deployment Tool** instead: the
+script downloads Microsoft's Click-to-Run bootstrapper from
+`officecdn.microsoft.com`, generates a silent 64-bit configuration
+(`HomeBusiness2024Retail`, OS display language with en-US fallback), and runs
+it. Expect a several-GB download.
+
+Licensing is intentionally not automated (yet): Office installs cleanly and
+prompts for Microsoft-account sign-in or a product key on first launch. Note
+that Office 2024 cannot coexist with Microsoft 365 apps on the same machine.
 
 ## Adding more software
 

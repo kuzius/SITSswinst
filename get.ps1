@@ -29,6 +29,11 @@
                      native winget output) instead of summary-only.
         $env:ADOBE32 - any value -> install 32-bit Adobe Acrobat Reader
                      instead of the default 64-bit build.
+        $env:OFFICE - any value -> also preinstall Office 2024 Home &
+                     Business (64-bit) via the Office Deployment Tool.
+                     Several-GB download; installs unlicensed - sign in
+                     with the owning Microsoft account (or add a key)
+                     after handover.
 
     Examples:
         # install everything (quiet, summary at the end)
@@ -101,6 +106,71 @@
         if     ($m -match 'Dell')   { return 'Dell' }
         elseif ($m -match 'Lenovo') { return 'Lenovo' }
         return $null
+    }
+
+    function Install-Office2024 {
+        # Office 2024 Home & Business is not in the winget catalog (winget only
+        # carries Microsoft 365 Apps), so it is installed via the Click-to-Run
+        # setup bootstrapper with a generated Office Deployment Tool XML.
+        # Licensing is deliberately not handled here: Office installs fine and
+        # asks for sign-in / product key on first launch.
+        # (Future: wire $env:KEYS to a PIDKEY attribute in the XML.)
+        $name = 'Office 2024 Home & Business (64-bit)'
+        if (-not $debugMode) {
+            Write-Host -NoNewline "[*] $name ... " -ForegroundColor Cyan
+        }
+        $status = 'Failed'
+        try {
+            # Already installed? Click-to-Run registers its products here.
+            $c2r = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration' -ErrorAction SilentlyContinue
+            if ($c2r -and $c2r.ProductReleaseIds -match 'HomeBusiness2024') {
+                $status = 'Already present'
+            }
+            else {
+                $work  = Join-Path $env:TEMP 'SITSswinst-office'
+                $null  = New-Item -ItemType Directory -Force -Path $work
+                $setup = Join-Path $work 'setup.exe'
+                $xml   = Join-Path $work 'office2024hb.xml'
+
+                Write-Step "Downloading Office setup bootstrapper from officecdn.microsoft.com ..."
+                Invoke-WebRequest -UseBasicParsing 'https://officecdn.microsoft.com/pr/wsus/setup.exe' -OutFile $setup
+
+                # 64-bit, OS display language (en-US fallback), fully silent.
+                @"
+<Configuration>
+  <Add OfficeClientEdition="64">
+    <Product ID="HomeBusiness2024Retail">
+      <Language ID="MatchOS" Fallback="en-us" />
+    </Product>
+  </Add>
+  <Display Level="None" AcceptEULA="TRUE" />
+  <Updates Enabled="TRUE" />
+</Configuration>
+"@ | Set-Content -Path $xml -Encoding UTF8
+
+                Write-Step "Running Office installer (several-GB download; 10-30 minutes) ..."
+                if ($debugMode) { & $setup /configure $xml | Out-Host }
+                else            { $null = & $setup /configure $xml 2>&1 }
+                $code = $LASTEXITCODE
+
+                if ($code -eq 0) { $status = 'Installed (unlicensed - activate later)' }
+                else             { $status = "Failed (exit $code)" }
+            }
+        }
+        catch {
+            Write-Step "$name failed: $($_.Exception.Message)"
+            $status = 'Failed'
+        }
+
+        if (-not $debugMode) {
+            $color = if ($status -like 'Failed*') { 'Red' } else { 'Green' }
+            Write-Host $status.ToLower() -ForegroundColor $color
+        }
+        else {
+            Write-Ok "${name}: $status"
+        }
+
+        return [pscustomobject]@{ Name = $name; Status = $status; Reason = $null }
     }
 
     function Install-Bundle {
@@ -224,6 +294,11 @@
             $results += [pscustomobject]@{ Name = $pkg.Name; Status = $status; Reason = $reason }
         }
 
+        # Opt-in Office 2024 preinstall (not a winget package - see function).
+        if ($env:OFFICE) {
+            $results += Install-Office2024
+        }
+
         foreach ($pkg in $Skipped) {
             $results += [pscustomobject]@{ Name = $pkg.Name; Status = "Skipped ($($pkg.Vendor) hardware only)"; Reason = $null }
         }
@@ -275,6 +350,9 @@
     if ($env:LIST) {
         Write-Host "Software bundle:" -ForegroundColor Cyan
         $toInstall | Format-Table Name, Id, Vendor -AutoSize | Out-Host
+        if ($env:OFFICE) {
+            Write-Host "+ Office 2024 Home & Business (64-bit) via Office Deployment Tool" -ForegroundColor Cyan
+        }
         return
     }
 
