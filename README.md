@@ -34,7 +34,7 @@ environment variables set *before* the call:
 | `$env:ONLY` | Comma-separated filter, e.g. `'VLC,7-Zip'` — install a subset only |
 | `$env:LIST` | Any value — print the bundle and exit without installing |
 | `$env:DEBUG` | Any value — verbose output with native winget progress. Default is quiet: one status line per package (`Installing X ... installed`) plus the final summary table. |
-| `$env:ADOBE32` | Any value — install **32-bit** Adobe Acrobat Reader instead of the default 64-bit build. |
+| `$env:ADOBE32` | Any value — install **32-bit** Adobe Acrobat Reader instead of the default 64-bit build. Only affects fresh installs: if either architecture is already on the machine, that copy is kept and upgraded — the other is never installed alongside. |
 | `$env:OFFICE` | Any value — also preinstall **Office 2024 Home & Business (64-bit)**. Several-GB download (10–30 min); installs **unlicensed** — sign in with the owning Microsoft account (or enter a product key) after handover. |
 | `$env:KEYS` | If set, takes the "keys provided" branch (reserved for future licensing/activation). If unset, the software bundle is installed. |
 

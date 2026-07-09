@@ -71,7 +71,8 @@
     $Packages = @(
         [pscustomobject]@{ Name = 'VLC media player';              Id = 'VideoLAN.VLC';                          Vendor = $null }
         [pscustomobject]@{ Name = '7-Zip';                         Id = '7zip.7zip';                             Vendor = $null }
-        [pscustomobject]@{ Name = 'Adobe Acrobat Reader';          Id = 'Adobe.Acrobat.Reader.64-bit';           Vendor = $null }
+        [pscustomobject]@{ Name = 'Adobe Acrobat Reader';          Id = 'Adobe.Acrobat.Reader.64-bit';           Vendor = $null;
+                           AltIds = @('Adobe.Acrobat.Reader.32-bit') }
         [pscustomobject]@{ Name = 'TeamViewer';                    Id = 'TeamViewer.TeamViewer';                 Vendor = $null }
         [pscustomobject]@{ Name = '.NET 8 Desktop Runtime (x64)';  Id = 'Microsoft.DotNet.DesktopRuntime.8.x64'; Vendor = 'Dell' }
         [pscustomobject]@{ Name = 'Dell Command Update';           Id = 'Dell.CommandUpdate';                    Vendor = 'Dell';
@@ -83,10 +84,14 @@
     )
 
     # Some clients need the 32-bit Adobe Reader: $env:ADOBE32 swaps the package.
+    # Either way the other architecture stays listed as an AltId, so a copy
+    # that is already installed wins (gets upgraded) regardless of the flag -
+    # the flag only decides what a fresh install gets.
     if ($env:ADOBE32) {
         $Packages | Where-Object { $_.Id -eq 'Adobe.Acrobat.Reader.64-bit' } | ForEach-Object {
-            $_.Name = 'Adobe Acrobat Reader (32-bit)'
-            $_.Id   = 'Adobe.Acrobat.Reader.32-bit'
+            $_.Name   = 'Adobe Acrobat Reader (32-bit)'
+            $_.Id     = 'Adobe.Acrobat.Reader.32-bit'
+            $_.AltIds = @('Adobe.Acrobat.Reader.64-bit')
         }
     }
 
