@@ -36,7 +36,8 @@ environment variables set *before* the call:
 | `$env:DEBUG` | Any value — verbose output with native winget progress. Default is quiet: one status line per package (`Installing X ... installed`) plus the final summary table. |
 | `$env:ADOBE32` | Any value — install **32-bit** Adobe Acrobat Reader instead of the default 64-bit build. Only affects fresh installs: if either architecture is already on the machine, that copy is kept and upgraded — the other is never installed alongside. |
 | `$env:OFFICE` | Any value — also preinstall **Office 2024 Home & Business (64-bit)**. Several-GB download (10–30 min); installs **unlicensed** — sign in with the owning Microsoft account (or enter a product key) after handover. |
-| `$env:TVCUSTOM` | TeamViewer **custom module configuration id** — installs your customized full client instead of the plain winget package; the module assigns the device to your account and grants easy access per its configuration. See below. |
+| `$env:TVCUSTOM` | TeamViewer **custom module configuration id** — installs your customized (branded) full client instead of the plain winget package. See below. |
+| `$env:TVASSIGN` | TeamViewer **assignment token** (Design & Deploy → Assignments) — after install, assigns the device to your account and grants easy access with no consent prompt. See below. |
 | `$env:KEYS` | If set, takes the "keys provided" branch (reserved for future licensing/activation). If unset, the software bundle is installed. |
 
 ```powershell
@@ -94,27 +95,39 @@ final summary. Explicitly requesting one via `$env:ONLY` overrides the check.
 > already installed (even at an older version) are **upgraded in place** rather
 > than reinstalled; "already up to date" counts as success.
 
-## TeamViewer account assignment (opt-in)
+## TeamViewer: customized client + account assignment (opt-in)
 
-With a licensed TeamViewer account you can have each prepped machine assign
-itself to your account — no manual adding per device. Create a customized
-**Full Client** module in **Design & Deploy** with *automatically add
-computers to your account* and *easy access* enabled, and note its
-configuration id (shown with the permanent link, e.g.
-`custom.teamviewer.com/a1b2c3d` → id `a1b2c3d`):
+Two independent, combinable steps:
+
+**1. Install your customized (branded) client — `$env:TVCUSTOM`.** Create a
+custom **Full Client** module in **Design & Deploy** and note its configuration
+id (shown with the permanent link, e.g. `custom.teamviewer.com/a1b2c3d` → id
+`a1b2c3d`). The script downloads that client from TeamViewer's design service
+(the 64-bit build on 64-bit Windows) and installs it silently, removing any
+existing client first.
+
+**2. Assign to your account with easy access — `$env:TVASSIGN`.** A full
+client's account assignment is otherwise an **interactive consent prompt** at
+first launch, so easy access never turns on unattended. Provide an **assignment
+token** — Management Console → **Design & Deploy → Assignments** → create one —
+and the script runs `TeamViewer.exe assignment --id <token> --grant-easy-access`
+after install, attaching the device and enabling easy access with no prompt.
+
+> The assignment token is **not** the module's configuration id, **not** the
+> deployment token embedded in the module page, and **not** a Web API token —
+> it is the token from the Assignments page.
 
 ```powershell
-$env:TVCUSTOM='<your-config-id>'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.ps1 | iex
+# customized client + non-interactive assignment & easy access
+$env:TVCUSTOM='<your-config-id>'; $env:TVASSIGN='<assignment-token>'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.ps1 | iex
+
+# just assign an already-installed client (plain or custom)
+$env:TVASSIGN='<assignment-token>'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.ps1 | iex
 ```
 
-The script downloads your customized client straight from TeamViewer's design
-service and installs it silently instead of the plain winget package (a 32-bit
-client on 64-bit Windows is removed first, as usual). Assignment and easy
-access happen on the client's first start, per the module configuration.
-
-> Anyone who knows the permanent link / configuration id can install a client
-> that lands in your account's device list — treat the id accordingly, and
-> prune unexpected devices in the Management Console.
+> The assignment token grants devices into your account — treat it as a secret,
+> keep it out of the public repo (pass it at runtime only), and prune unexpected
+> devices in the Management Console.
 
 ## Office 2024 Home & Business (opt-in)
 

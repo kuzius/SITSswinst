@@ -36,9 +36,12 @@
                      after handover.
         $env:TVCUSTOM - TeamViewer custom module configuration id (from
                      Design & Deploy, e.g. 'a1b2c3d'). Installs your
-                     customized full client instead of the winget package;
-                     the module's own settings handle account assignment
-                     and easy access on first start.
+                     customized full client instead of the winget package.
+        $env:TVASSIGN - TeamViewer assignment token (Management Console ->
+                     Design & Deploy -> Assignments). After install, assigns
+                     the device to your account and grants easy access with
+                     no consent prompt. Needed for full clients, whose
+                     account assignment is otherwise interactive.
 
     Examples:
         # install everything (quiet, summary at the end)
@@ -212,7 +215,61 @@
                 Write-Step "Installing silently ..."
                 $p = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
                 $code = $p.ExitCode
-                $status = if ($code -eq 0) { 'Installed (assigned via custom module)' }
+                $status = if ($code -eq 0) { 'Installed (customized client)' }
+                          else { "Failed (exit $code)" }
+            }
+        }
+        catch {
+            Write-Step "$name failed: $($_.Exception.Message)"
+            $status = 'Failed'
+        }
+
+        if (-not $debugMode) {
+            $color = if ($status -like 'Failed*') { 'Red' } else { 'Green' }
+            Write-Host $status.ToLower() -ForegroundColor $color
+        }
+        else {
+            Write-Ok "${name}: $status"
+        }
+
+        return [pscustomobject]@{ Name = $name; Status = $status; Reason = $null }
+    }
+
+    function Invoke-TeamViewerAssignment {
+        # Assigns this device to the account behind the assignment token in
+        # $env:TVASSIGN and grants easy access - non-interactively, unlike a
+        # full client's first-run consent prompt. The token is a Design &
+        # Deploy assignment token (not the module's embedded deployment token
+        # and not a Web API token).
+        $name = 'TeamViewer account assignment'
+        if (-not $debugMode) {
+            Write-Host -NoNewline "[*] $name ... " -ForegroundColor Cyan
+        }
+        $status = 'Failed'
+        try {
+            $dir = (Get-ItemProperty 'HKLM:\SOFTWARE\TeamViewer' -ErrorAction SilentlyContinue).InstallationDirectory
+            if (-not $dir) {
+                $dir = (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\TeamViewer' -ErrorAction SilentlyContinue).InstallationDirectory
+            }
+            $exe = if ($dir) { Join-Path $dir 'TeamViewer.exe' } else { $null }
+            if (-not ($exe -and (Test-Path $exe))) {
+                $status = 'Failed (TeamViewer not found)'
+            }
+            else {
+                # The service may still be coming online right after a fresh
+                # install, so allow a few retries.
+                $code = $null
+                $attempt = 0
+                do {
+                    $attempt++
+                    Write-Step "Assignment attempt $attempt ..."
+                    $p = Start-Process -FilePath $exe `
+                        -ArgumentList "assignment --id $($env:TVASSIGN) --grant-easy-access --device-alias=`"$env:COMPUTERNAME`"" `
+                        -Wait -PassThru -WindowStyle Hidden
+                    $code = $p.ExitCode
+                    if ($code -ne 0 -and $attempt -lt 3) { Start-Sleep -Seconds 15 }
+                } while ($code -ne 0 -and $attempt -lt 3)
+                $status = if ($code -eq 0) { 'Assigned + easy access' }
                           else { "Failed (exit $code)" }
             }
         }
@@ -452,9 +509,14 @@
             $results += [pscustomobject]@{ Name = $pkg.Name; Status = $status; Reason = $reason }
         }
 
-        # Customized TeamViewer client (installs + assigns via the module).
+        # Customized TeamViewer client (installs the branded client).
         if ($env:TVCUSTOM) {
             $results += Install-TeamViewerCustom
+        }
+
+        # Assign the installed TeamViewer client to the account + easy access.
+        if ($env:TVASSIGN) {
+            $results += Invoke-TeamViewerAssignment
         }
 
         # Opt-in Office 2024 preinstall (not a winget package - see function).
