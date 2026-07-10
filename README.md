@@ -113,9 +113,11 @@ token** — Management Console → **Design & Deploy → Assignments** → creat
 and the script runs `TeamViewer.exe assignment --id <token> --grant-easy-access`
 after install, attaching the device and enabling easy access with no prompt.
 
-> The assignment token is **not** the module's configuration id, **not** the
-> deployment token embedded in the module page, and **not** a Web API token —
-> it is the token from the Assignments page.
+> The assignment token is **not** the module's configuration id and **not** the
+> deployment token embedded in the module page — it is the token from the
+> Assignments page. Both token dialects work: classic `12345678-XXXX…` tokens
+> (used with the legacy `assign --api-token` verb) and long `0001…` tokens
+> (used with the newer `assignment --id` verb) — the script auto-detects.
 
 ```powershell
 # customized client + non-interactive assignment & easy access

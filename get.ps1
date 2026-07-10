@@ -256,15 +256,25 @@
                 $status = 'Failed (TeamViewer not found)'
             }
             else {
+                # Two token dialects: long "0001..." tokens use the newer
+                # `assignment --id` verb; classic numeric-dash tokens (e.g.
+                # 12345678-XXXXXXXXXXXXXXXXXXXX) use the legacy
+                # `assign --api-token` verb, which owns --grant-easy-access.
+                $tvArgs = if ($env:TVASSIGN -match '^0001') {
+                    "assignment --id $($env:TVASSIGN) --device-alias=`"$env:COMPUTERNAME`""
+                }
+                else {
+                    "assign --api-token $($env:TVASSIGN) --grant-easy-access --reassign --alias `"$env:COMPUTERNAME`""
+                }
+
                 # The service may still be coming online right after a fresh
-                # install, so allow a few retries.
+                # install, so allow a few retries. Requires elevation.
                 $code = $null
                 $attempt = 0
                 do {
                     $attempt++
                     Write-Step "Assignment attempt $attempt ..."
-                    $p = Start-Process -FilePath $exe `
-                        -ArgumentList "assignment --id $($env:TVASSIGN) --grant-easy-access --device-alias=`"$env:COMPUTERNAME`"" `
+                    $p = Start-Process -FilePath $exe -ArgumentList $tvArgs `
                         -Wait -PassThru -WindowStyle Hidden
                     $code = $p.ExitCode
                     if ($code -ne 0 -and $attempt -lt 3) { Start-Sleep -Seconds 15 }
