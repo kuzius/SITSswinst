@@ -224,6 +224,8 @@
             $status = 'Failed'
         }
 
+        if ($status -notlike 'Failed*') { Set-TeamViewerAutostart }
+
         if (-not $debugMode) {
             $color = if ($status -like 'Failed*') { 'Red' } else { 'Green' }
             Write-Host $status.ToLower() -ForegroundColor $color
@@ -233,6 +235,25 @@
         }
 
         return [pscustomobject]@{ Name = $name; Status = $status; Reason = $null }
+    }
+
+    function Set-TeamViewerAutostart {
+        # Ticks "Start TeamViewer with Windows" (AutoStartGUI) so the GUI is
+        # present at logon. Unattended access itself rides on the TeamViewer
+        # service, which always autostarts - this is for tray/UI presence.
+        # Needs elevation (HKLM); fails quietly on a non-elevated run.
+        foreach ($key in 'HKLM:\SOFTWARE\TeamViewer', 'HKLM:\SOFTWARE\WOW6432Node\TeamViewer') {
+            if (Get-ItemProperty $key -ErrorAction SilentlyContinue) {
+                try {
+                    Set-ItemProperty -Path $key -Name 'AutoStartGUI' -Value 1 -Type DWord -ErrorAction Stop
+                    Write-Step "Enabled 'Start TeamViewer with Windows'."
+                }
+                catch {
+                    Write-Step "Could not enable TeamViewer autostart: $($_.Exception.Message)"
+                }
+                return
+            }
+        }
     }
 
     function Invoke-TeamViewerAssignment {
@@ -287,6 +308,8 @@
             Write-Step "$name failed: $($_.Exception.Message)"
             $status = 'Failed'
         }
+
+        if ($status -notlike 'Failed*') { Set-TeamViewerAutostart }
 
         if (-not $debugMode) {
             $color = if ($status -like 'Failed*') { 'Red' } else { 'Green' }

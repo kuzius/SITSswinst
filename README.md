@@ -112,6 +112,8 @@ first launch, so easy access never turns on unattended. Provide an **assignment
 token** — Management Console → **Design & Deploy → Assignments** → create one —
 and the script runs `TeamViewer.exe assignment --id <token> --grant-easy-access`
 after install, attaching the device and enabling easy access with no prompt.
+After any successful TeamViewer step the script also ticks **Start TeamViewer
+with Windows** (`AutoStartGUI`), so the client UI is present at logon.
 
 > The assignment token is **not** the module's configuration id and **not** the
 > deployment token embedded in the module page — it is the token from the
