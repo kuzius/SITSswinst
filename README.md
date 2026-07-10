@@ -106,6 +106,11 @@ Licensing is intentionally not automated (yet): Office installs cleanly and
 prompts for Microsoft-account sign-in or a product key on first launch. Note
 that Office 2024 cannot coexist with Microsoft 365 apps on the same machine.
 
+If the machine already has **Office 2019 or 2021** installed, the Office step
+is **skipped entirely** (shown as `Skipped (Office 2019/2021 present)` in the
+summary) — 2024 can't coexist with an older perpetual Office, and the existing
+licensed installation is left untouched.
+
 ## Adding more software
 
 Edit the `$Packages` list near the top of [`get.ps1`](get.ps1) and add a line:

@@ -126,10 +126,17 @@
         }
         $status = 'Failed'
         try {
-            # Already installed? Click-to-Run registers its products here.
+            # Click-to-Run registers installed Office products here (Office
+            # 2019/2021/2024 and Microsoft 365 are all C2R-based).
             $c2r = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration' -ErrorAction SilentlyContinue
-            if ($c2r -and $c2r.ProductReleaseIds -match 'HomeBusiness2024') {
+            $productIds = if ($c2r) { [string]$c2r.ProductReleaseIds } else { '' }
+            if ($productIds -match 'HomeBusiness2024') {
                 $status = 'Already present'
+            }
+            elseif ($productIds -match '2019|2021') {
+                # Do not touch machines with an older perpetual Office - 2024
+                # cannot coexist with it and the client may be licensed for it.
+                $status = 'Skipped (Office 2019/2021 present)'
             }
             else {
                 $work  = Join-Path $env:TEMP 'SITSswinst-office'
