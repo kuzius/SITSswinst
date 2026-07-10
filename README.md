@@ -36,7 +36,8 @@ environment variables set *before* the call:
 | `$env:DEBUG` | Any value — verbose output with native winget progress. Default is quiet: one status line per package (`Installing X ... installed`) plus the final summary table. |
 | `$env:ADOBE32` | Any value — install **32-bit** Adobe Acrobat Reader instead of the default 64-bit build. Only affects fresh installs: if either architecture is already on the machine, that copy is kept and upgraded — the other is never installed alongside. |
 | `$env:OFFICE` | Any value — also preinstall **Office 2024 Home & Business (64-bit)**. Several-GB download (10–30 min); installs **unlicensed** — sign in with the owning Microsoft account (or enter a product key) after handover. |
-| `$env:TVASSIGN` | TeamViewer **assignment id** — after install, assigns the device to your TeamViewer account (and grants easy access if the assignment config enables it). See below. |
+| `$env:TVCUSTOM` | TeamViewer **custom module configuration id** — installs your customized full client instead of the plain winget package; the module assigns the device to your account and grants easy access per its configuration. See below. |
+| `$env:TVASSIGN` | TeamViewer **assignment id** — after install, assigns the device to your TeamViewer account (and grants easy access if the assignment config enables it). Alternative to `TVCUSTOM`; not needed when the custom module already assigns. |
 | `$env:KEYS` | If set, takes the "keys provided" branch (reserved for future licensing/activation). If unset, the software bundle is installed. |
 
 ```powershell
@@ -97,21 +98,31 @@ final summary. Explicitly requesting one via `$env:ONLY` overrides the check.
 ## TeamViewer account assignment (opt-in)
 
 With a licensed TeamViewer account you can have each prepped machine assign
-itself to your account — no manual adding per device:
+itself to your account — no manual adding per device. Two ways:
 
-1. In the TeamViewer **Management Console** (web), go to **Design & Deploy →
-   Assignments** and create an assignment. Enable **easy access** in its
-   configuration if you want passwordless connections from your account.
-2. Copy the assignment id (a long token starting with `0001CoA…`).
-3. Provide it when running the installer:
+**Custom module (recommended, simplest).** Create a customized **Full Client**
+module in **Design & Deploy** with *automatically add computers to your
+account* and *easy access* enabled, and note its configuration id (shown with
+the permanent link, e.g. `custom.teamviewer.com/a1b2c3d` → id `a1b2c3d`):
 
 ```powershell
-$env:TVASSIGN='<your-assignment-id>'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.ps1 | iex
+$env:TVCUSTOM='<your-config-id>'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.ps1 | iex
 ```
 
-The script runs `TeamViewer.exe assignment --id …` after the bundle installs
-(with the computer name as the device alias, and retries while the TeamViewer
-service finishes starting). The summary shows `Assigned to account`.
+The script downloads your customized client straight from TeamViewer's design
+service and installs it silently instead of the plain winget package (a 32-bit
+client on 64-bit Windows is removed first, as usual). Assignment and easy
+access happen on the client's first start, per the module configuration.
+
+**Assignment id (alternative).** For a plain client plus explicit assignment,
+create an assignment under **Design & Deploy → Assignments** and pass its
+token: `$env:TVASSIGN='<assignment-id>'`. The script then runs
+`TeamViewer.exe assignment --id …` after install (computer name as device
+alias, with retries while the service starts).
+
+> Anyone who knows the permanent link / configuration id can install a client
+> that lands in your account's device list — treat the id accordingly, and
+> prune unexpected devices in the Management Console.
 
 ## Office 2024 Home & Business (opt-in)
 

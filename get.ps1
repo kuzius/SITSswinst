@@ -34,11 +34,17 @@
                      Several-GB download; installs unlicensed - sign in
                      with the owning Microsoft account (or add a key)
                      after handover.
+        $env:TVCUSTOM - TeamViewer custom module configuration id (from
+                     Design & Deploy, e.g. 'a1b2c3d'). Installs your
+                     customized full client instead of the winget package;
+                     the module's own settings handle account assignment
+                     and easy access on first start.
         $env:TVASSIGN - TeamViewer assignment id (from the Management
                      Console: Design & Deploy -> Assignments). After the
                      bundle installs, the device is assigned to your
                      TeamViewer account; easy access is granted if the
-                     assignment configuration enables it.
+                     assignment configuration enables it. Not needed when
+                     TVCUSTOM already assigns the device.
 
     Examples:
         # install everything (quiet, summary at the end)
@@ -89,6 +95,13 @@
         # [pscustomobject]@{ Name = 'Notepad++';                   Id = 'Notepad++.Notepad++';                   Vendor = $null }
     )
 
+    # Custom TeamViewer module: when $env:TVCUSTOM holds a Design & Deploy
+    # configuration id, the customized client is installed by its own function
+    # instead of the plain winget package.
+    if ($env:TVCUSTOM) {
+        $Packages = @($Packages | Where-Object { $_.Id -ne 'TeamViewer.TeamViewer' })
+    }
+
     # Some clients need the 32-bit Adobe Reader: $env:ADOBE32 swaps the package.
     # Either way the other architecture stays listed as an AltId, so a copy
     # that is already installed wins (gets upgraded) regardless of the flag -
@@ -132,6 +145,81 @@
         if (-not ($wow -and $wow.InstallationDirectory)) { return $false }
         $native = Get-ItemProperty $pkg.NativeKey -ErrorAction SilentlyContinue
         return -not ($native -and $native.InstallationDirectory)
+    }
+
+    function Install-TeamViewerCustom {
+        # Installs the customized TeamViewer full client for the Design &
+        # Deploy configuration id in $env:TVCUSTOM. The module's own settings
+        # handle account assignment and easy access on first start, so no
+        # separate assignment step is needed.
+        $name = "TeamViewer (custom module $($env:TVCUSTOM))"
+        if (-not $debugMode) {
+            Write-Host -NoNewline "[*] $name ... " -ForegroundColor Cyan
+        }
+        $status = 'Failed'
+        try {
+            # Replace a 32-bit build first (same reasoning as the bundle path).
+            $tvKeys = [pscustomobject]@{
+                Wow64Key  = 'HKLM:\SOFTWARE\WOW6432Node\TeamViewer'
+                NativeKey = 'HKLM:\SOFTWARE\TeamViewer'
+            }
+            if (Test-Needs64BitSwap $tvKeys) {
+                $installDir  = (Get-ItemProperty $tvKeys.Wow64Key -ErrorAction SilentlyContinue).InstallationDirectory
+                $uninstaller = Join-Path $installDir 'uninstall.exe'
+                if (Test-Path $uninstaller) {
+                    Write-Step "Removing 32-bit client first: `"$uninstaller`" /S"
+                    $null = Start-Process -FilePath $uninstaller -ArgumentList "/S _?=$installDir" -Wait -PassThru
+                }
+            }
+
+            $work = Join-Path $env:TEMP 'SITSswinst-tv'
+            $null = New-Item -ItemType Directory -Force -Path $work
+            $exe  = Join-Path $work 'TeamViewer_Setup.exe'
+
+            # Resolve the download URL the same way the module's own download
+            # button does, so the link keeps working when TeamViewer bumps the
+            # client major version. Falls back to the direct pattern.
+            Write-Step "Resolving download for configuration id $($env:TVCUSTOM) ..."
+            $dlUrl = $null
+            $tvVersion = 15
+            try {
+                $page = (Invoke-WebRequest -UseBasicParsing "https://custom.teamviewer.com/$($env:TVCUSTOM)").Content
+                $m = [regex]::Match($page, '"customizationData":(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})')
+                if ($m.Success) {
+                    $cdJson = $m.Groups[1].Value
+                    try { $tvVersion = [int]($cdJson | ConvertFrom-Json).version } catch { }
+                    $resp = Invoke-RestMethod "https://custom.teamviewer.com/custom-download-url?generationParams=$([uri]::EscapeDataString($cdJson))"
+                    if ($resp.isSuccess -and $resp.data.url) { $dlUrl = $resp.data.url }
+                }
+            }
+            catch { }
+            if (-not $dlUrl) {
+                $dlUrl = "https://customdesignservice.teamviewer.com/download/windows/v$tvVersion/$($env:TVCUSTOM)/TeamViewer_Setup.exe"
+            }
+
+            Write-Step "Downloading customized client (~80 MB) ..."
+            Invoke-WebRequest -UseBasicParsing $dlUrl -OutFile $exe
+
+            Write-Step "Installing silently ..."
+            $p = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
+            $code = $p.ExitCode
+            $status = if ($code -eq 0) { 'Installed (assigned via custom module)' }
+                      else { "Failed (exit $code)" }
+        }
+        catch {
+            Write-Step "$name failed: $($_.Exception.Message)"
+            $status = 'Failed'
+        }
+
+        if (-not $debugMode) {
+            $color = if ($status -like 'Failed*') { 'Red' } else { 'Green' }
+            Write-Host $status.ToLower() -ForegroundColor $color
+        }
+        else {
+            Write-Ok "${name}: $status"
+        }
+
+        return [pscustomobject]@{ Name = $name; Status = $status; Reason = $null }
     }
 
     function Invoke-TeamViewerAssignment {
@@ -403,6 +491,11 @@
             $results += [pscustomobject]@{ Name = $pkg.Name; Status = $status; Reason = $reason }
         }
 
+        # Customized TeamViewer client (installs + assigns via the module).
+        if ($env:TVCUSTOM) {
+            $results += Install-TeamViewerCustom
+        }
+
         # Assign the (freshly installed or existing) TeamViewer client to the
         # account behind the assignment id, if one was provided.
         if ($env:TVASSIGN) {
@@ -465,6 +558,9 @@
     if ($env:LIST) {
         Write-Host "Software bundle:" -ForegroundColor Cyan
         $toInstall | Format-Table Name, Id, Vendor -AutoSize | Out-Host
+        if ($env:TVCUSTOM) {
+            Write-Host "+ TeamViewer custom module $($env:TVCUSTOM) (replaces the winget TeamViewer package)" -ForegroundColor Cyan
+        }
         if ($env:OFFICE) {
             Write-Host "+ Office 2024 Home & Business (64-bit) via Office Deployment Tool" -ForegroundColor Cyan
         }
