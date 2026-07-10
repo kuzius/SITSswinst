@@ -265,9 +265,23 @@
                     # e.g. a 32-bit TeamViewer client on 64-bit Windows:
                     # remove it and install the 64-bit build instead.
                     Write-Step "$($pkg.Name): 32-bit build on 64-bit Windows - replacing with the 64-bit build ..."
-                    $null = Invoke-Winget @(
-                        'uninstall', '--id', $foundId, '--exact',
-                        '--accept-source-agreements', '--silent')
+                    # Prefer the app's own NSIS uninstaller: winget --silent
+                    # still shows TeamViewer's confirmation window, whereas
+                    # uninstall.exe /S is truly silent. _?= pins the install
+                    # dir and stops NSIS from forking to a temp copy, so
+                    # -Wait actually waits for the uninstall to finish.
+                    $installDir  = (Get-ItemProperty $pkg.Wow64Key -ErrorAction SilentlyContinue).InstallationDirectory
+                    $uninstaller = $null
+                    if ($installDir) { $uninstaller = Join-Path $installDir 'uninstall.exe' }
+                    if ($uninstaller -and (Test-Path $uninstaller)) {
+                        Write-Step "Running silent uninstall: `"$uninstaller`" /S"
+                        $null = Start-Process -FilePath $uninstaller -ArgumentList "/S _?=$installDir" -Wait -PassThru
+                    }
+                    else {
+                        $null = Invoke-Winget @(
+                            'uninstall', '--id', $foundId, '--exact',
+                            '--accept-source-agreements', '--silent')
+                    }
                     $code = Invoke-Winget @(
                         'install', '--id', $pkg.Id, '--exact',
                         '--accept-package-agreements', '--accept-source-agreements', '--silent')
