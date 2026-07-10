@@ -36,6 +36,7 @@ environment variables set *before* the call:
 | `$env:DEBUG` | Any value — verbose output with native winget progress. Default is quiet: one status line per package (`Installing X ... installed`) plus the final summary table. |
 | `$env:ADOBE32` | Any value — install **32-bit** Adobe Acrobat Reader instead of the default 64-bit build. Only affects fresh installs: if either architecture is already on the machine, that copy is kept and upgraded — the other is never installed alongside. |
 | `$env:OFFICE` | Any value — also preinstall **Office 2024 Home & Business (64-bit)**. Several-GB download (10–30 min); installs **unlicensed** — sign in with the owning Microsoft account (or enter a product key) after handover. |
+| `$env:TVASSIGN` | TeamViewer **assignment id** — after install, assigns the device to your TeamViewer account (and grants easy access if the assignment config enables it). See below. |
 | `$env:KEYS` | If set, takes the "keys provided" branch (reserved for future licensing/activation). If unset, the software bundle is installed. |
 
 ```powershell
@@ -92,6 +93,25 @@ final summary. Explicitly requesting one via `$env:ONLY` overrides the check.
 > not version-pinned, so it never needs a version refresh. Packages that are
 > already installed (even at an older version) are **upgraded in place** rather
 > than reinstalled; "already up to date" counts as success.
+
+## TeamViewer account assignment (opt-in)
+
+With a licensed TeamViewer account you can have each prepped machine assign
+itself to your account — no manual adding per device:
+
+1. In the TeamViewer **Management Console** (web), go to **Design & Deploy →
+   Assignments** and create an assignment. Enable **easy access** in its
+   configuration if you want passwordless connections from your account.
+2. Copy the assignment id (a long token starting with `0001CoA…`).
+3. Provide it when running the installer:
+
+```powershell
+$env:TVASSIGN='<your-assignment-id>'; irm https://raw.githubusercontent.com/kuzius/SITSswinst/main/get.ps1 | iex
+```
+
+The script runs `TeamViewer.exe assignment --id …` after the bundle installs
+(with the computer name as the device alias, and retries while the TeamViewer
+service finishes starting). The summary shows `Assigned to account`.
 
 ## Office 2024 Home & Business (opt-in)
 
