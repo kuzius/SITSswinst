@@ -39,12 +39,6 @@
                      customized full client instead of the winget package;
                      the module's own settings handle account assignment
                      and easy access on first start.
-        $env:TVASSIGN - TeamViewer assignment id (from the Management
-                     Console: Design & Deploy -> Assignments). After the
-                     bundle installs, the device is assigned to your
-                     TeamViewer account; easy access is granted if the
-                     assignment configuration enables it. Not needed when
-                     TVCUSTOM already assigns the device.
 
     Examples:
         # install everything (quiet, summary at the end)
@@ -205,55 +199,6 @@
             $code = $p.ExitCode
             $status = if ($code -eq 0) { 'Installed (assigned via custom module)' }
                       else { "Failed (exit $code)" }
-        }
-        catch {
-            Write-Step "$name failed: $($_.Exception.Message)"
-            $status = 'Failed'
-        }
-
-        if (-not $debugMode) {
-            $color = if ($status -like 'Failed*') { 'Red' } else { 'Green' }
-            Write-Host $status.ToLower() -ForegroundColor $color
-        }
-        else {
-            Write-Ok "${name}: $status"
-        }
-
-        return [pscustomobject]@{ Name = $name; Status = $status; Reason = $null }
-    }
-
-    function Invoke-TeamViewerAssignment {
-        # Assigns this device to the TeamViewer account behind the assignment
-        # id in $env:TVASSIGN (licensed feature). Easy access is granted when
-        # the assignment configuration in the Management Console enables it.
-        $name = 'TeamViewer account assignment'
-        if (-not $debugMode) {
-            Write-Host -NoNewline "[*] $name ... " -ForegroundColor Cyan
-        }
-        $status = 'Failed'
-        try {
-            $dir = (Get-ItemProperty 'HKLM:\SOFTWARE\TeamViewer' -ErrorAction SilentlyContinue).InstallationDirectory
-            if (-not $dir) { $dir = 'C:\Program Files\TeamViewer' }
-            $exe = Join-Path $dir 'TeamViewer.exe'
-            if (-not (Test-Path $exe)) {
-                $status = 'Failed (TeamViewer not found)'
-            }
-            else {
-                # The TeamViewer service may still be starting right after a
-                # fresh install, so allow a couple of retries.
-                $attempt = 0
-                do {
-                    $attempt++
-                    Write-Step "Assignment attempt $attempt ..."
-                    $p = Start-Process -FilePath $exe `
-                        -ArgumentList "assignment --id $($env:TVASSIGN) --device-alias=$($env:COMPUTERNAME)" `
-                        -Wait -PassThru -WindowStyle Hidden
-                    $code = $p.ExitCode
-                    if ($code -ne 0 -and $attempt -lt 3) { Start-Sleep -Seconds 10 }
-                } while ($code -ne 0 -and $attempt -lt 3)
-                $status = if ($code -eq 0) { 'Assigned to account' }
-                          else { "Failed (exit $code)" }
-            }
         }
         catch {
             Write-Step "$name failed: $($_.Exception.Message)"
@@ -494,12 +439,6 @@
         # Customized TeamViewer client (installs + assigns via the module).
         if ($env:TVCUSTOM) {
             $results += Install-TeamViewerCustom
-        }
-
-        # Assign the (freshly installed or existing) TeamViewer client to the
-        # account behind the assignment id, if one was provided.
-        if ($env:TVASSIGN) {
-            $results += Invoke-TeamViewerAssignment
         }
 
         # Opt-in Office 2024 preinstall (not a winget package - see function).
