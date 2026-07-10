@@ -152,53 +152,69 @@
         }
         $status = 'Failed'
         try {
-            # Replace a 32-bit build first (same reasoning as the bundle path).
-            $tvKeys = [pscustomobject]@{
-                Wow64Key  = 'HKLM:\SOFTWARE\WOW6432Node\TeamViewer'
-                NativeKey = 'HKLM:\SOFTWARE\TeamViewer'
+            # Already running the customized client? TeamViewer marks it with
+            # a trailing "C" in the version (e.g. "15.79.4 C"). On 64-bit
+            # Windows only the native (64-bit) install counts - a customized
+            # 32-bit build still gets replaced below.
+            $nativeTv = Get-ItemProperty 'HKLM:\SOFTWARE\TeamViewer' -ErrorAction SilentlyContinue
+            if ($nativeTv -and $nativeTv.Version -match 'C\s*$') {
+                $status = 'Already present (customized)'
             }
-            if (Test-Needs64BitSwap $tvKeys) {
-                $installDir  = (Get-ItemProperty $tvKeys.Wow64Key -ErrorAction SilentlyContinue).InstallationDirectory
-                $uninstaller = Join-Path $installDir 'uninstall.exe'
-                if (Test-Path $uninstaller) {
-                    Write-Step "Removing 32-bit client first: `"$uninstaller`" /S"
-                    $null = Start-Process -FilePath $uninstaller -ArgumentList "/S _?=$installDir" -Wait -PassThru
+            else {
+                # Remove any existing client first: the silent setup aborts
+                # (exit 2) on a same-version over-install, and a 32-bit build
+                # on 64-bit Windows must go anyway.
+                foreach ($key in 'HKLM:\SOFTWARE\TeamViewer', 'HKLM:\SOFTWARE\WOW6432Node\TeamViewer') {
+                    $dir = (Get-ItemProperty $key -ErrorAction SilentlyContinue).InstallationDirectory
+                    if ($dir) {
+                        $uninstaller = Join-Path $dir 'uninstall.exe'
+                        if (Test-Path $uninstaller) {
+                            Write-Step "Removing existing client: `"$uninstaller`" /S"
+                            $null = Start-Process -FilePath $uninstaller -ArgumentList "/S _?=$dir" -Wait -PassThru
+                        }
+                    }
                 }
-            }
 
-            $work = Join-Path $env:TEMP 'SITSswinst-tv'
-            $null = New-Item -ItemType Directory -Force -Path $work
-            $exe  = Join-Path $work 'TeamViewer_Setup.exe'
+                # 64-bit Windows gets the x64 build - the service's default
+                # TeamViewer_Setup.exe is the 32-bit client.
+                $setupFile = if ([Environment]::Is64BitOperatingSystem) { 'TeamViewer_Setup_x64.exe' }
+                             else { 'TeamViewer_Setup.exe' }
 
-            # Resolve the download URL the same way the module's own download
-            # button does, so the link keeps working when TeamViewer bumps the
-            # client major version. Falls back to the direct pattern.
-            Write-Step "Resolving download for configuration id $($env:TVCUSTOM) ..."
-            $dlUrl = $null
-            $tvVersion = 15
-            try {
-                $page = (Invoke-WebRequest -UseBasicParsing "https://custom.teamviewer.com/$($env:TVCUSTOM)").Content
-                $m = [regex]::Match($page, '"customizationData":(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})')
-                if ($m.Success) {
-                    $cdJson = $m.Groups[1].Value
-                    try { $tvVersion = [int]($cdJson | ConvertFrom-Json).version } catch { }
-                    $resp = Invoke-RestMethod "https://custom.teamviewer.com/custom-download-url?generationParams=$([uri]::EscapeDataString($cdJson))"
-                    if ($resp.isSuccess -and $resp.data.url) { $dlUrl = $resp.data.url }
+                $work = Join-Path $env:TEMP 'SITSswinst-tv'
+                $null = New-Item -ItemType Directory -Force -Path $work
+                $exe  = Join-Path $work $setupFile
+
+                # Resolve the download URL the same way the module's own
+                # download button does, so the link keeps working when
+                # TeamViewer bumps the client major version. Falls back to
+                # the direct pattern.
+                Write-Step "Resolving download for configuration id $($env:TVCUSTOM) ..."
+                $dlUrl = $null
+                $tvVersion = 15
+                try {
+                    $page = (Invoke-WebRequest -UseBasicParsing "https://custom.teamviewer.com/$($env:TVCUSTOM)").Content
+                    $m = [regex]::Match($page, '"customizationData":(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})')
+                    if ($m.Success) {
+                        $cdJson = $m.Groups[1].Value -replace 'TeamViewer_Setup\.exe', $setupFile
+                        try { $tvVersion = [int]($cdJson | ConvertFrom-Json).version } catch { }
+                        $resp = Invoke-RestMethod "https://custom.teamviewer.com/custom-download-url?generationParams=$([uri]::EscapeDataString($cdJson))"
+                        if ($resp.isSuccess -and $resp.data.url) { $dlUrl = $resp.data.url }
+                    }
                 }
-            }
-            catch { }
-            if (-not $dlUrl) {
-                $dlUrl = "https://customdesignservice.teamviewer.com/download/windows/v$tvVersion/$($env:TVCUSTOM)/TeamViewer_Setup.exe"
-            }
+                catch { }
+                if (-not $dlUrl) {
+                    $dlUrl = "https://customdesignservice.teamviewer.com/download/windows/v$tvVersion/$($env:TVCUSTOM)/$setupFile"
+                }
 
-            Write-Step "Downloading customized client (~80 MB) ..."
-            Invoke-WebRequest -UseBasicParsing $dlUrl -OutFile $exe
+                Write-Step "Downloading customized client (~80 MB) ..."
+                Invoke-WebRequest -UseBasicParsing $dlUrl -OutFile $exe
 
-            Write-Step "Installing silently ..."
-            $p = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
-            $code = $p.ExitCode
-            $status = if ($code -eq 0) { 'Installed (assigned via custom module)' }
-                      else { "Failed (exit $code)" }
+                Write-Step "Installing silently ..."
+                $p = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
+                $code = $p.ExitCode
+                $status = if ($code -eq 0) { 'Installed (assigned via custom module)' }
+                          else { "Failed (exit $code)" }
+            }
         }
         catch {
             Write-Step "$name failed: $($_.Exception.Message)"
