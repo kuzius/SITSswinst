@@ -73,7 +73,8 @@
         [pscustomobject]@{ Name = '7-Zip';                         Id = '7zip.7zip';                             Vendor = $null }
         [pscustomobject]@{ Name = 'Adobe Acrobat Reader';          Id = 'Adobe.Acrobat.Reader.64-bit';           Vendor = $null;
                            AltIds = @('Adobe.Acrobat.Reader.32-bit') }
-        [pscustomobject]@{ Name = 'TeamViewer';                    Id = 'TeamViewer.TeamViewer';                 Vendor = $null }
+        [pscustomobject]@{ Name = 'TeamViewer';                    Id = 'TeamViewer.TeamViewer';                 Vendor = $null;
+                           Wow64Key = 'HKLM:\SOFTWARE\WOW6432Node\TeamViewer'; NativeKey = 'HKLM:\SOFTWARE\TeamViewer' }
         [pscustomobject]@{ Name = '.NET 8 Desktop Runtime (x64)';  Id = 'Microsoft.DotNet.DesktopRuntime.8.x64'; Vendor = 'Dell' }
         [pscustomobject]@{ Name = 'Dell Command Update';           Id = 'Dell.CommandUpdate';                    Vendor = 'Dell';
                            AltIds = @('Dell.CommandUpdate.Universal'); ReinstallOnFailedUpgrade = $true }
@@ -111,6 +112,21 @@
         if     ($m -match 'Dell')   { return 'Dell' }
         elseif ($m -match 'Lenovo') { return 'Lenovo' }
         return $null
+    }
+
+    function Test-Needs64BitSwap {
+        # True when a package that declares Wow64Key/NativeKey is installed as
+        # a 32-bit build on 64-bit Windows (WOW6432Node key present, native
+        # key absent) and should be replaced with the 64-bit build. Once the
+        # 64-bit build is in place the native key exists, so this cannot
+        # re-trigger on later runs.
+        param($pkg)
+        if (-not $pkg.Wow64Key) { return $false }
+        if (-not [Environment]::Is64BitOperatingSystem) { return $false }
+        $wow = Get-ItemProperty $pkg.Wow64Key -ErrorAction SilentlyContinue
+        if (-not ($wow -and $wow.InstallationDirectory)) { return $false }
+        $native = Get-ItemProperty $pkg.NativeKey -ErrorAction SilentlyContinue
+        return -not ($native -and $native.InstallationDirectory)
     }
 
     function Install-Office2024 {
@@ -245,7 +261,20 @@
                     if ($LASTEXITCODE -eq 0) { $foundId = $id; break }
                 }
 
-                if ($foundId) {
+                if ($foundId -and (Test-Needs64BitSwap $pkg)) {
+                    # e.g. a 32-bit TeamViewer client on 64-bit Windows:
+                    # remove it and install the 64-bit build instead.
+                    Write-Step "$($pkg.Name): 32-bit build on 64-bit Windows - replacing with the 64-bit build ..."
+                    $null = Invoke-Winget @(
+                        'uninstall', '--id', $foundId, '--exact',
+                        '--accept-source-agreements', '--silent')
+                    $code = Invoke-Winget @(
+                        'install', '--id', $pkg.Id, '--exact',
+                        '--accept-package-agreements', '--accept-source-agreements', '--silent')
+                    $status = if ($code -eq 0) { 'Reinstalled (64-bit)' }
+                              else { "Failed (exit $code)" }
+                }
+                elseif ($foundId) {
                     Write-Step "$($pkg.Name) is present as $foundId - checking for updates ..."
                     $code = Invoke-Winget @(
                         'upgrade', '--id', $foundId, '--exact', '--include-unknown',
