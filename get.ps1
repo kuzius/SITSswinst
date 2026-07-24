@@ -435,6 +435,7 @@
             -1978334967 = 'a reboot is required to finish a previous installation. Reboot, then re-run'
             -1978334966 = 'the installation requires a reboot to complete'
             -1978335226 = 'the package''s own installer failed to run. Try again from an elevated (Administrator) PowerShell'
+            -1978335138 = 'winget does not trust its download source (certificate mismatch) - usually antivirus/proxy HTTPS inspection or an outdated App Installer. Update "App Installer" from the Microsoft Store, check the system date/time, disable AV SSL-scanning, then re-run'
         }
         $results = @()
         foreach ($pkg in $List) {
@@ -525,10 +526,26 @@
                 Write-Step "$($pkg.Name) failed: $($_.Exception.Message)"
             }
 
-            # Translate known failure codes into a human explanation.
+            # Translate failure codes into a human explanation: curated map
+            # first (actionable advice), otherwise ask winget itself for the
+            # official description of the code (winget error <hex>).
             $reason = $null
-            if ($status -like 'Failed*' -and $null -ne $code -and $ExitReasons.ContainsKey([int]$code)) {
-                $reason = $ExitReasons[[int]$code]
+            if ($status -like 'Failed*' -and $null -ne $code) {
+                if ($ExitReasons.ContainsKey([int]$code)) {
+                    $reason = $ExitReasons[[int]$code]
+                }
+                else {
+                    try {
+                        $hex = '0x{0:x8}' -f [int]$code
+                        $out = @(winget error $hex 2>$null)
+                        $symLine = $out | Where-Object { $_ -match '^0x[0-9a-fA-F]{8}\s*:' } | Select-Object -First 1
+                        $msgLine = ($out | Where-Object { $_ -and $_.Trim() } | Select-Object -Last 1).Trim()
+                        if ($symLine -and $msgLine) {
+                            $reason = "$((($symLine -split ':', 2)[1]).Trim()) - $msgLine"
+                        }
+                    }
+                    catch { }
+                }
             }
 
             if (-not $debugMode) {
